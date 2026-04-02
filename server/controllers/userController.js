@@ -44,10 +44,10 @@ export const updateUser = async (req, res) => {
     const { firebaseUID } = req.user;
 
     const updatedUser = await User.findOneAndUpdate(
-      { firebaseUID },
-      req.body,
-      { new: true }
-    );
+  { firebaseUID },
+  req.body,
+  { returnDocument: "after" }
+);
 
     res.status(200).json(updatedUser);
   } catch (error) {

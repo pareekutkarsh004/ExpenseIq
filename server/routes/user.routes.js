@@ -1,10 +1,13 @@
 import express from 'express';  
-import { registerOrLoginUser,deleteUser,getCurrentUser,updateUser } from '../controllers/userController';
+import { verifyFirebaseToken } from '../middlewares/firebaseAuth.middleware.js';
+import { registerOrLoginUser,deleteUser,getCurrentUser,updateUser } from '../controllers/userController.js';
 const router = express.Router();
 
-router.post('/register-or-login', registerOrLoginUser);
-router.get('/current-user', getCurrentUser);
-router.put('/update-user', updateUser);
-router.delete('/delete-user', deleteUser);
+// import { verifyFirebaseToken } from '../middlewares/firebaseAuth.middleware.js';
+
+router.post('/register-or-login', verifyFirebaseToken, registerOrLoginUser);
+router.get('/current-user', verifyFirebaseToken, getCurrentUser);
+router.put('/update-user', verifyFirebaseToken, updateUser);
+router.delete('/delete-user', verifyFirebaseToken, deleteUser);
 
 export default router;
