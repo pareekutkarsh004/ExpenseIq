@@ -13,13 +13,14 @@ export const verifyFirebaseToken = async (req, res, next) => {
     const decoded = await admin.auth().verifyIdToken(token);
 
     req.user = {
-      uid: decoded.uid,
-      email: decoded.email,
+      firebaseUID: decoded.uid, // ✅ important fix
+      email: decoded.email || "",
       name: decoded.name || "User"
     };
 
     next();
   } catch (error) {
+    console.log(error.message); // helpful for debugging
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 };
