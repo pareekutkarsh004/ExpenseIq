@@ -54,8 +54,8 @@ export const createExpense = async (req, res) => {
       participants,
       splits
     });
-
-    return res.status(201).json(expense.populate("paidBy", "name email").populate("participants", "name email").populate("splits.user", "name email"));
+    const populatedExpense = await expense.populate("paidBy", "name email").populate("participants", "name email").populate("splits.user", "name email");
+    return res.status(201).json(populatedExpense);
 
   } catch (error) {
     return res.status(500).json({ message: "Internal server error" });
@@ -181,4 +181,92 @@ export const deleteExpense = async (req, res) => {
         console.error(error);
         return res.status(500).json({ message: "Internal server error" });  
     }
+};
+
+export const getBalances = async (req, res) => {
+  try {
+    // Get current user and for this user we will make graph type structure in which 
+    // it would be informed this user owes this much to other user and this user is owed 
+    // this much by other user. So we will loop through all expenses of this user and calculate these values.
+
+    const firebaseUID = req.user.firebaseUID;
+
+    // get the current user from DB
+    const currentUser = await User.findOne({
+      firebaseUID
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Get all expenses where current user is a participant
+    const expenses = await Expense.find({
+      participants: currentUser._id
+    });
+
+    if (expenses.length === 0) {
+      return res.status(200).json({ balances: [] });
+    }
+
+    // { userId: netAmount }
+    // positive → that user owes current user
+    // negative → current user owes that user
+    const balances = {};
+
+    for (let expense of expenses) {
+      const paidBy = expense.paidBy.toString(); // ObjectId → string
+      const currentUserId = currentUser._id.toString();
+
+      // Find the split for current user
+      const userSplit = expense.splits.find(
+        split => split.user.toString() === currentUserId
+      );
+
+      if (!userSplit) continue;
+
+      const amountOwed = userSplit.amount;
+
+      if (paidBy === currentUserId) {
+        // Current user paid, so others owe current user
+        for (let split of expense.splits) {
+          if (split.user.toString() !== currentUserId) {
+            const otherUserId = split.user.toString();
+
+            balances[otherUserId] =
+              (balances[otherUserId] || 0) + split.amount;
+          }
+        }
+      } else {
+        // Current user owes the payer
+        balances[paidBy] =
+          (balances[paidBy] || 0) - amountOwed;
+      }
+    }
+
+    // 🔥 Convert balances object → UI friendly array
+    const result = [];
+
+    // Loop over each userId in balances
+    for (let userId in balances) {
+      const amount = balances[userId];
+
+      // Fetch user details (only required fields)
+      const user = await User.findById(userId).select("name email");
+
+      if (!user) continue;
+
+      result.push({
+        user, // { name, email }
+        amount: Math.abs(amount), // always positive for UI
+        type: amount > 0 ? "owes_you" : "you_owe" // decide relation
+      });
+    }
+
+    // ✅ Final response for frontend
+    return res.status(200).json({ balances: result });
+
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
 };

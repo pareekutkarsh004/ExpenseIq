@@ -1,5 +1,5 @@
 import express from 'express';  
-import { verifyFirebaseToken } from '../middlewares/firebaseAuth.middleware.js';
+import verifyFirebaseToken from '../middlewares/firebaseAuth.middleware.js';
 import { registerOrLoginUser,deleteUser,getCurrentUser,updateUser,getAllUsers } from '../controllers/userController.js';
 
 const router = express.Router();

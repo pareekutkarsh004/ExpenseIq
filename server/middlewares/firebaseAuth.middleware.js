@@ -1,6 +1,6 @@
 import admin from "../config/firebase.js";
 
-export const verifyFirebaseToken = async (req, res, next) => {
+const verifyFirebaseToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -24,3 +24,5 @@ export const verifyFirebaseToken = async (req, res, next) => {
     return res.status(401).json({ message: "Invalid or expired token" });
   }
 };
+
+export default verifyFirebaseToken;
