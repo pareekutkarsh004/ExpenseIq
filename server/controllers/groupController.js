@@ -23,7 +23,8 @@ export const createGroup = async (req, res) => {
       members: [currentUser._id], // creator added automatically
       createdBy: currentUser._id
     });
-
+    group.populate("createdBy", "name email"); // 🔥 populate creator info
+    group.populate("members", "name email"); // 🔥 populate for better response
     await group.save();
 
     return res.status(201).json({
@@ -324,8 +325,75 @@ export const getGroupBalances = async (req, res) => {
     // 🔥 call service
     const balances = await calculateGroupBalances(groupId);
 
-    // ✅ send response
-    return res.status(200).json({ balances });
+    // Add user details to balances for better frontend display
+    const detailedBalances = {};
+
+    for (let owedBy in balances) {
+      detailedBalances[owedBy] = {};
+
+      for (let owedTo in balances[owedBy]) {
+        const amount = balances[owedBy][owedTo];
+
+        // 🔥 populate BOTH users (important)
+        const owedByUser = await User.findById(owedBy).select("name email");
+        const owedToUser = await User.findById(owedTo).select("name email");
+
+        detailedBalances[owedBy][owedTo] = {
+          amount,
+          owedByUser,   // 👈 added
+          owedToUser    // 👈 already there conceptually
+        };
+      }
+    }
+
+    // ✅ send response (FIXED)
+    return res.status(200).json({ balances: detailedBalances });
+
+  } catch (error) {
+    console.error("🔥 ERROR in getGroupBalances:", error); // 🔥 helpful log
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+// Add member to group (only existing members can add, and no duplicates allowed)
+export const addMemberToGroup = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { userId } = req.body;
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    // Get current user
+    const currentUser = await User.findOne({
+      firebaseUID: req.user.firebaseUID
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ✅ NEW: any member can add others
+    if (!group.members.includes(currentUser._id)) {
+      return res.status(403).json({ message: "You are not a member of this group" });
+    }
+
+    // ✅ Prevent duplicates
+    if (group.members.includes(userId)) {
+      return res.status(400).json({ message: "User already in group" });
+    }
+
+    // Add member
+    group.members.push(userId);
+    await group.save();
+
+    return res.status(200).json({
+      message: "Member added successfully",
+      group
+    });
 
   } catch (error) {
     return res.status(500).json({ message: "Internal Server Error" });

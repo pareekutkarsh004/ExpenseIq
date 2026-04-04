@@ -1,3 +1,4 @@
+console.log("Group routes loaded");
 import express from "express";
 import {
   createGroup,
@@ -6,7 +7,8 @@ import {
   updateGroup,
   deleteGroup,
   getGroupBalances,
-  simplifyExpenses
+  simplifyExpenses,
+  addMemberToGroup
 } from "../controllers/groupController.js";
 
 import verifyFirebaseToken from "../middlewares/firebaseAuth.middleware.js";
@@ -19,7 +21,8 @@ router.use(verifyFirebaseToken);
 // CRUD routes
 router.post("/", createGroup);              // create group
 router.get("/", getGroups);                 // get all groups for user
-
+// Add member to group
+router.post("/:groupId/add-member", addMemberToGroup);
 // 🔥 IMPORTANT: specific routes before dynamic ones
 router.get("/:groupId/balances", getGroupBalances);
 router.get("/:groupId/simplify", simplifyExpenses);
