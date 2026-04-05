@@ -8,7 +8,9 @@ import {
   deleteGroup,
   getGroupBalances,
   simplifyExpenses,
-  addMemberToGroup
+  addMemberToGroup,
+  removeMembersFromGroup,
+  leaveGroup
 } from "../controllers/groupController.js";
 
 import verifyFirebaseToken from "../middlewares/firebaseAuth.middleware.js";
@@ -23,6 +25,12 @@ router.post("/", createGroup);              // create group
 router.get("/", getGroups);                 // get all groups for user
 // Add member to group
 router.post("/:groupId/add-member", addMemberToGroup);
+// Remove members from group 
+router.put('/:groupId/remove-members',removeMembersFromGroup);
+// Leaving the group by yourself 
+router.put('/:groupId/leave',leaveGroup);
+
+
 // 🔥 IMPORTANT: specific routes before dynamic ones
 router.get("/:groupId/balances", getGroupBalances);
 router.get("/:groupId/simplify", simplifyExpenses);

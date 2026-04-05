@@ -228,92 +228,77 @@ export const calculateGroupBalances = async (groupId) => {
 
   return balances;
 };
-
-// Simplify expenses feature to minmize transactions 
- 
+// Simplify Expenses 
 export const simplifyExpenses = async (req, res) => {
   try {
     const { groupId } = req.params;
 
-    // ✅ Get current user
-    const currentUser = await User.findOne({
-      firebaseUID: req.user.firebaseUID
-    });
-
-    if (!currentUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // ✅ Get group
+    // 1. Standard Checks
+    const currentUser = await User.findOne({ firebaseUID: req.user.firebaseUID });
     const group = await Group.findById(groupId);
+    if (!group || !currentUser) return res.status(404).json({ message: "Not found" });
 
-    if (!group) {
-      return res.status(404).json({ message: "Group not found" });
-    }
+    const isMember = group.members.some(m => m.toString() === currentUser._id.toString());
+    if (!isMember) return res.status(403).json({ message: "Access denied" });
 
-    // ✅ Check membership
-    const isMember = group.members.some(
-      m => m.toString() === currentUser._id.toString()
-    );
-
-    if (!isMember) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-
-    // 🔥 STEP 1: Get graph
+    // 2. Calculation Logic (Greedy Algorithm)
     const graph = await calculateGroupBalances(groupId);
-
-    // 🔥 STEP 2: Convert to net balances
     const net = {};
 
     for (let from in graph) {
       for (let to in graph[from]) {
         const amount = graph[from][to];
-
         net[from] = (net[from] || 0) - amount;
         net[to] = (net[to] || 0) + amount;
       }
     }
 
-    // 🔥 STEP 3: Separate users
     const creditors = [];
     const debtors = [];
-
     for (let user in net) {
-      if (net[user] > 0) {
-        creditors.push({ user, amount: net[user] });
-      } else if (net[user] < 0) {
-        debtors.push({ user, amount: -net[user] });
-      }
+      if (net[user] > 0) creditors.push({ user, amount: net[user] });
+      else if (net[user] < 0) debtors.push({ user, amount: -net[user] });
     }
 
-    // 🔥 STEP 4: Simplify (greedy)
-    const transactions = [];
-
+    const rawTransactions = [];
     let i = 0, j = 0;
-
     while (i < debtors.length && j < creditors.length) {
-      const debtor = debtors[i];
-      const creditor = creditors[j];
-
-      const amount = Math.min(debtor.amount, creditor.amount);
-
-      transactions.push({
-        from: debtor.user,
-        to: creditor.user,
-        amount
+      const amount = Math.min(debtors[i].amount, creditors[j].amount);
+      rawTransactions.push({
+        from: debtors[i].user,
+        to: creditors[j].user,
+        amount: Number(amount.toFixed(2)) // Rounding for currency
       });
-
-      debtor.amount -= amount;
-      creditor.amount -= amount;
-
-      if (debtor.amount === 0) i++;
-      if (creditor.amount === 0) j++;
+      debtors[i].amount -= amount;
+      creditors[j].amount -= amount;
+      if (debtors[i].amount === 0) i++;
+      if (creditors[j].amount === 0) j++;
     }
+
+    // 🔥 NEW STEP: Populate User Details for the response
+    // Get all unique user IDs involved in transactions
+    const userIds = [...new Set(rawTransactions.flatMap(t => [t.from, t.to]))];
+    
+    // Fetch user details from DB
+    const usersInfo = await User.find({ _id: { $in: userIds } }).select("name email");
+
+    // Create a map for quick lookup: { "userId": { name, email } }
+    const userMap = {};
+    usersInfo.forEach(u => {
+      userMap[u._id.toString()] = { name: u.name, email: u.email };
+    });
+
+    // Transform raw transactions into detailed transactions
+    const transactions = rawTransactions.map(t => ({
+      from: userMap[t.from] || { id: t.from, name: "Unknown" },
+      to: userMap[t.to] || { id: t.to, name: "Unknown" },
+      amount: t.amount
+    }));
 
     return res.status(200).json({ transactions });
 
   } catch (error) {
+    console.error(error);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };
@@ -389,7 +374,7 @@ export const addMemberToGroup = async (req, res) => {
     // Add member
     group.members.push(userId);
     await group.save();
-
+    await group.populate("members", "name email"); // 🔥 populate for better response
     return res.status(200).json({
       message: "Member added successfully",
       group
@@ -397,5 +382,106 @@ export const addMemberToGroup = async (req, res) => {
 
   } catch (error) {
     return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+//remove members from group 
+
+export const removeMembersFromGroup = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+    const { userIds } = req.body; // Expecting an array: ["id1", "id2"]
+
+    // Validate input
+    if (!userIds || !Array.isArray(userIds)) {
+      return res.status(400).json({ message: "userIds must be an array" });
+    }
+
+    const group = await Group.findById(groupId);
+
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    // Get current user (Firebase Auth)
+    const currentUser = await User.findOne({
+      firebaseUID: req.user.firebaseUID
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ✅ NEW: Verify requester is a member (Authorization)
+    if (!group.members.includes(currentUser._id)) {
+      return res.status(403).json({ message: "You are not a member of this group" });
+    }
+
+    // ✅ Remove multiple members using $pull with $in
+    // This removes any ID found in the userIds array
+    const updatedGroup = await Group.findByIdAndUpdate(
+      groupId,
+      { 
+        $pull: { members: { $in: userIds } } 
+      },
+      { new: true }
+    ).populate("members", "name email");
+
+    return res.status(200).json({
+      message: "Members removed successfully",
+      group: updatedGroup
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+
+// Leave the particular group 
+export const leaveGroup = async (req, res) => {
+  try {
+    const { groupId } = req.params;
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      return res.status(404).json({ message: "Group not found" });
+    }
+
+    const currentUser = await User.findOne({
+      firebaseUID: req.user.firebaseUID
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // ✅ FIX: Use id?.toString() to handle null/undefined values in the array
+    const isMember = group.members.some(id => id?.toString() === currentUser._id.toString());
+    
+    if (!isMember) {
+      return res.status(400).json({ message: "You are not a member of this group" });
+    }
+
+    // ✅ FIX: Add id?.toString() here as well for safety
+    group.members = group.members.filter(
+      (memberId) => memberId?.toString() !== currentUser._id.toString()
+    );
+
+    await group.save();
+    
+    // 🔥 Make sure to use 'await' here so the response actually contains the data
+    await group.populate("members", "name email");
+
+    return res.status(200).json({
+      message: "You left the group successfully",
+      group
+    });
+
+  } catch (error) {
+    // This will now tell you exactly what went wrong in your console
+    console.error("Error in leaveGroup:", error.message);
+    return res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };
