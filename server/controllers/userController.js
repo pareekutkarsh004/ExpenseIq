@@ -2,25 +2,28 @@ import User from "../models/User.model.js";
 
 export const registerOrLoginUser = async (req, res) => {
   try {
-    const { firebaseUID, name, email } = req.user; // coming from middleware
+    const { firebaseUID, email } = req.user; 
+    
+    // ✅ Use optional chaining or an empty object fallback to prevent the crash
+    const name = req.body?.name || req.user?.name || "New User"; 
 
     let user = await User.findOne({ firebaseUID });
 
-    // if not exists → create
     if (!user) {
       user = await User.create({
         firebaseUID,
-        name,
-        email
+        email,
+        name: name
       });
+      console.log("✅ Created new user with name:", user.name);
     }
 
     res.status(200).json(user);
   } catch (error) {
+    console.error("🔥 Error in registerOrLoginUser:", error);
     res.status(500).json({ message: error.message });
   }
 };
-
 // To display data on frontend we will use GetCurrentUser
 export const getCurrentUser = async (req, res) => {
   try {
@@ -33,12 +36,27 @@ export const getCurrentUser = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    res.status(200).json(user);
+    // ✅ Programmer Filter: Ensure user is never their own friend in the UI
+    const uniqueFriends = [];
+    const friendIds = new Set();
+
+    user.friends.forEach(f => {
+      if (f.user && 
+          f.user._id.toString() !== user._id.toString() && 
+          !friendIds.has(f.user._id.toString())) {
+        friendIds.add(f.user._id.toString());
+        uniqueFriends.push(f);
+      }
+    });
+
+    const userObj = user.toObject();
+    userObj.friends = uniqueFriends;
+
+    res.status(200).json(userObj);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-
 export const updateUser = async (req, res) => {
   try {
     const { firebaseUID } = req.user;
