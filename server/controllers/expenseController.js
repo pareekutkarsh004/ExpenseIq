@@ -49,7 +49,7 @@ export const createExpense = async (req, res) => {
 
     console.log("📊 Total Split:", totalSplitAmount, "Amount:", amount); // 🔥
 
-    if (totalSplitAmount !== amount) {
+    if (Math.abs(totalSplitAmount - amount) > 0.01) {
       console.log("❌ Split mismatch");
       return res.status(400).json({ message: "Split amounts do not add up to total amount" });
     }
@@ -88,12 +88,12 @@ export const createExpense = async (req, res) => {
     console.log("✅ Expense created:", expense._id); // 🔥
 
     const populatedExpense = await expense.populate([
-  { path: "paidBy", select: "name email" },
-  // only add group info if group is provided (avoid unnecessary population)
-  {path: "group", select: "name", match: group ? { _id: group } : null},
-  { path: "participants", select: "name email" },
-  { path: "splits.user", select: "name email" }
-]);
+      { path: "paidBy", select: "name email" },
+      { path: "group", select: "name", match: group ? { _id: group } : null },
+      { path: "participants", select: "name email" },
+      { path: "splits.user", select: "name email" }
+    ]);
+
     return res.status(201).json(populatedExpense);
 
   } catch (error) {
@@ -105,7 +105,6 @@ export const createExpense = async (req, res) => {
 
 export const getExpenses = async (req, res) => {
   try {
-    // First we will get the current User from DB using firebaseUID from req.user
     const firebaseUID = req.user.firebaseUID;
     const user = await User.findOne({ firebaseUID });
 
@@ -113,11 +112,10 @@ export const getExpenses = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Get all expenses where current user is a participant, sorted by newest first
     const expenses = await Expense.find({
       participants: user._id,
     })
-      .sort({ createdAt: -1 }) // newest first
+      .sort({ createdAt: -1 })
       .populate("paidBy", "name email")
       .populate("participants", "name email")
       .populate("splits.user", "name email");
@@ -135,29 +133,25 @@ export const getExpenses = async (req, res) => {
 // update expense controller
 export const updateExpense = async (req, res) => {
   try {
-    const { expenseId } = req.params; // expense id from URL
+    const { expenseId } = req.params;
     const { description, amount, group, participants = [], splits = [] } = req.body;
 
     console.log("📌 Update Expense:", expenseId); // 🔥
 
-    // Find current user
     const currentUser = await User.findOne({ firebaseUID: req.user.firebaseUID });
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Find expense
     const expense = await Expense.findById(expenseId);
     if (!expense) {
       return res.status(404).json({ message: "Expense not found" });
     }
 
-    // Optional: Only the payer can update
     if (expense.paidBy.toString() !== currentUser._id.toString()) {
       return res.status(403).json({ message: "You are not allowed to update this expense" });
     }
 
-    // Validate splits
     if (splits.length > 0) {
       const totalSplitAmount = splits.reduce((sum, split) => sum + split.amount, 0);
       console.log("📊 Update Split Total:", totalSplitAmount); // 🔥
@@ -166,13 +160,11 @@ export const updateExpense = async (req, res) => {
       }
     }
 
-    // Ensure payer is in participants
     const participantIds = participants.map(id => id.toString());
     if (!participantIds.includes(expense.paidBy.toString())) {
       participants.push(expense.paidBy);
     }
 
-    // Optional: Validate splits users are in participants
     for (let split of splits) {
       if (!participantIds.includes(split.user.toString()) && split.user.toString() !== expense.paidBy.toString()) {
         console.log("❌ Invalid split in update:", split.user); // 🔥
@@ -180,14 +172,12 @@ export const updateExpense = async (req, res) => {
       }
     }
 
-    // Update fields
     if (description) expense.description = description;
     if (amount) expense.amount = amount;
     if (group) expense.group = group;
     if (participants.length > 0) expense.participants = participants;
     if (splits.length > 0) expense.splits = splits;
 
-    // Save and populate before sending
     const updatedExpense = await expense.save();
 
     console.log("✅ Expense updated:", updatedExpense._id); // 🔥
@@ -208,57 +198,47 @@ export const updateExpense = async (req, res) => {
 // Delete expense controller
 
 export const deleteExpense = async (req, res) => {
-    try {
-        const { expenseId } = req.params; // expense id from URL
+  try {
+    const { expenseId } = req.params;
 
-        console.log("📌 Delete Expense:", expenseId); // 🔥
+    console.log("📌 Delete Expense:", expenseId); // 🔥
 
-        // Find current user
-        const currentUser = await User.findOne({ firebaseUID: req.user.firebaseUID });
-        if (!currentUser) {
-            return res.status(404).json({ message: "User not found" });
-        }
-
-        // Find expense
-        const expense = await Expense.findById(expenseId);
-        if (!expense) {
-            return res.status(404).json({ message: "Expense not found" });
-        }
-        // Optional: Only the payer can delete
-        if (expense.paidBy.toString() !== currentUser._id.toString()) {
-            return res.status(403).json({ message: "You are not allowed to delete this expense" });
-        }
-
-        await Expense.findByIdAndDelete(expenseId);
-
-        console.log("✅ Expense deleted"); // 🔥
-
-        return res.status(200).json({ message: "Expense deleted successfully" });
-    } catch (error) {
-        console.error("🔥 ERROR in deleteExpense:", error); // 🔥
-        return res.status(500).json({ message: "Internal server error" });  
+    const currentUser = await User.findOne({ firebaseUID: req.user.firebaseUID });
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
     }
+
+    const expense = await Expense.findById(expenseId);
+    if (!expense) {
+      return res.status(404).json({ message: "Expense not found" });
+    }
+
+    if (expense.paidBy.toString() !== currentUser._id.toString()) {
+      return res.status(403).json({ message: "You are not allowed to delete this expense" });
+    }
+
+    await Expense.findByIdAndDelete(expenseId);
+
+    console.log("✅ Expense deleted"); // 🔥
+
+    return res.status(200).json({ message: "Expense deleted successfully" });
+  } catch (error) {
+    console.error("🔥 ERROR in deleteExpense:", error); // 🔥
+    return res.status(500).json({ message: "Internal server error" });  
+  }
 };
 
 
 export const getBalances = async (req, res) => {
   try {
-    // Get current user and for this user we will make graph type structure in which 
-    // it would be informed this user owes this much to other user and this user is owed 
-    // this much by other user. So we will loop through all expenses of this user and calculate these values.
-
     const firebaseUID = req.user.firebaseUID;
 
-    // get the current user from DB
-    const currentUser = await User.findOne({
-      firebaseUID
-    });
+    const currentUser = await User.findOne({ firebaseUID });
 
     if (!currentUser) {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Get all expenses where current user is a participant
     const expenses = await Expense.find({
       participants: currentUser._id
     });
@@ -266,29 +246,36 @@ export const getBalances = async (req, res) => {
     console.log("📊 Balance Expenses Count:", expenses.length); // 🔥
 
     if (expenses.length === 0) {
-      return res.status(200).json({ balances: [] });
+      return res.status(200).json({
+        balances: [],
+        totalYouOwe: 0,
+        totalYouAreOwed: 0,
+        totalBalance: 0,
+        personalTotal: 0
+      });
     }
 
-    // { userId: netAmount }
-    // positive → that user owes current user
-    // negative → current user owes that user
     const balances = {};
+    let personalTotal = 0; // ✅ FIX: moved outside loop
 
     for (let expense of expenses) {
-      const paidBy = expense.paidBy.toString(); // ObjectId → string
+      const paidBy = expense.paidBy.toString();
       const currentUserId = currentUser._id.toString();
 
-      // Find the split for current user
       const userSplit = expense.splits.find(
         split => split.user.toString() === currentUserId
       );
 
-      if (!userSplit) continue;
+      // 🔥 FIX: do NOT skip expense
+      const amountOwed = userSplit ? userSplit.amount : 0;
 
-      const amountOwed = userSplit.amount;
+      // ✅ NEW: handle personal expense separately
+      if (expense.participants.length === 1) {
+        personalTotal += expense.amount;
+        continue;
+      }
 
       if (paidBy === currentUserId) {
-        // Current user paid, so others owe current user
         for (let split of expense.splits) {
           if (split.user.toString() !== currentUserId) {
             const otherUserId = split.user.toString();
@@ -298,38 +285,57 @@ export const getBalances = async (req, res) => {
           }
         }
       } else {
-        // Current user owes the payer
-        balances[paidBy] =
-          (balances[paidBy] || 0) - amountOwed;
+        if (amountOwed > 0) {
+          balances[paidBy] =
+            (balances[paidBy] || 0) - amountOwed;
+        }
       }
     }
 
     console.log("📊 Raw Balances:", balances); // 🔥
+    console.log("💰 Personal Total:", personalTotal); // 🔥
 
-    // 🔥 Convert balances object → UI friendly array
     const result = [];
 
-    // Loop over each userId in balances
     for (let userId in balances) {
       const amount = balances[userId];
 
-      // Fetch user details (only required fields)
       const user = await User.findById(userId).select("name email");
 
       if (!user) continue;
 
       result.push({
-        user, // { name, email }
-        amount: Math.abs(amount), // always positive for UI
-        type: amount > 0 ? "owes_you" : "you_owe" // decide relation
+        user,
+        amount: Math.abs(amount),
+        type: amount > 0 ? "owes_you" : "you_owe"
       });
     }
 
-    // ✅ Final response for frontend
-    return res.status(200).json({ balances: result });
+    let totalYouOwe = 0;
+    let totalYouAreOwed = 0;
+
+    for (let userId in balances) {
+      const amount = balances[userId];
+
+      if (amount > 0) {
+        totalYouAreOwed += amount;
+      } else {
+        totalYouOwe += Math.abs(amount);
+      }
+    }
+
+    console.log(`Total You Owe: ${totalYouOwe}, Total You Are Owed: ${totalYouAreOwed}`); // 🔥
+
+    return res.status(200).json({
+      balances: result,
+      totalYouOwe,
+      totalYouAreOwed,
+      totalBalance: totalYouAreOwed - totalYouOwe,
+      personalTotal // ✅ FIX: added properly
+    });
 
   } catch (error) {
-    console.error("🔥 ERROR in getBalances:", error); // 🔥
+    console.error("🔥 ERROR in getBalances:", error);
     return res.status(500).json({ message: error.message });
   }
 };

@@ -13,7 +13,13 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const profileRef = useRef(null);
   
-  const [balances, setBalances] = useState({ balances: [] });
+  const [balances, setBalances] = useState({
+     balances: [],
+     totalYouOwe: 0,
+     totalYouAreOwed: 0,
+     totalBalance: 0,
+     personalTotal: 0   // ✅ added
+     });
   const [groups, setGroups] = useState([]); 
   const [friends, setFriends] = useState([]);
   const [recentExpenses, setRecentExpenses] = useState([]);
@@ -39,11 +45,12 @@ const Dashboard = () => {
   const [isCustomSplit, setIsCustomSplit] = useState(false);
   const [customAmounts, setCustomAmounts] = useState({});
   const [memberEmail, setMemberEmail] = useState("");
+  const [selectedFriendId, setSelectedFriendId] = useState("");
 
   const fetchData = async () => {
     try {
       const bRes = await api.get("/expenses/balances");
-      setBalances(bRes.data || { balances: [] });
+      setBalances(bRes.data);
       const gRes = await api.get("/groups");
       setGroups(gRes.data.groups || []);
       const eRes = await api.get("/expenses");
@@ -103,15 +110,39 @@ const Dashboard = () => {
         splits: finalSplits
       };
     } else {
-      const participants = selectedParticipants.length > 0 ? selectedParticipants : [user._id];
+      const participants =
+  selectedParticipants.length > 0
+    ? selectedParticipants
+    : selectedGroup?.group?.members?.map(m => m._id) || [user._id];
       if (isCustomSplit) {
-        finalSplits = participants.map(id => ({ user: id, amount: Number(customAmounts[id] || 0) }));
-        const sum = finalSplits.reduce((acc, curr) => acc + curr.amount, 0);
-        if (sum !== total) return alert(`Sum must match ₹${total}`);
-      } else {
-        const split = Number((total / participants.length).toFixed(2));
-        finalSplits = participants.map(id => ({ user: id, amount: split }));
-      }
+  finalSplits = participants.map(id => ({
+    user: id,
+    amount: Number((customAmounts[id] || 0))
+  }));
+
+  // ✅ Fix floating precision issue
+  const sum = finalSplits.reduce((acc, curr) => acc + curr.amount, 0);
+
+  if (Number(sum.toFixed(2)) !== Number(total.toFixed(2))) {
+    return alert(`Sum must match ₹${total}`);
+  }
+
+} else {
+  // ✅ Equal split with precision fix
+  const baseSplit = Math.floor((total / participants.length) * 100) / 100;
+  let remaining = Number((total - baseSplit * participants.length).toFixed(2));
+
+  finalSplits = participants.map((id) => {
+    let amount = baseSplit;
+
+    if (remaining > 0) {
+      amount = Number((amount + 0.01).toFixed(2));
+      remaining = Number((remaining - 0.01).toFixed(2));
+    }
+
+    return { user: id, amount };
+  });
+}
       payload = {
         description: expenseDesc,
         amount: total,
@@ -145,8 +176,12 @@ const Dashboard = () => {
 
   if (loading) return <div className="h-screen flex items-center justify-center font-bold text-emerald-600">Syncing...</div>;
 
-  const totalOwed = balances.balances?.filter(b => b.type === "owes_you").reduce((s, b) => s + b.amount, 0) || 0;
-  const totalOwe = balances.balances?.filter(b => b.type === "you_owe").reduce((s, b) => s + b.amount, 0) || 0;
+  const totalOwed = balances.totalYouAreOwed;
+  const totalOwe = balances.totalYouOwe;
+
+  // ✅ include personal expenses in total balance
+const totalBalanceWithPersonal =
+  balances.totalBalance + balances.personalTotal;
 
   return (
     <div className="flex h-screen bg-gray-50 text-gray-900 overflow-hidden font-sans">
@@ -212,9 +247,26 @@ const Dashboard = () => {
         {!selectedGroup ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12 text-center">
-              <StatCard title="Total Balance" amount={totalOwed - totalOwe} color="text-gray-900" icon={<Receipt size={24}/>} />
-              <StatCard title="You owe" amount={totalOwe} color="text-orange-600" icon={<ArrowDownLeft size={24}/>} />
-              <StatCard title="You are owed" amount={totalOwed} color="text-emerald-600" icon={<ArrowUpRight size={24}/>} />
+          <StatCard 
+  title="Total Balance" 
+  amount={totalBalanceWithPersonal}   // ✅ FIXED
+  color="text-gray-900" 
+  icon={<Receipt size={24}/>} 
+/>
+
+<StatCard 
+  title="You owe" 
+  amount={totalOwe} 
+  color="text-orange-600" 
+  icon={<ArrowDownLeft size={24}/>} 
+/>
+
+<StatCard 
+  title="You are owed" 
+  amount={totalOwed} 
+  color="text-emerald-600" 
+  icon={<ArrowUpRight size={24}/>} 
+/>
             </div>
             <div className="bg-white rounded-[40px] border border-gray-100 p-10 shadow-sm">
                 <div className="flex justify-between items-center mb-8">
@@ -375,10 +427,87 @@ const Dashboard = () => {
 
       {isAddMemberOpen && (
         <Modal title="Invite Member" close={() => setIsAddMemberOpen(false)}>
-          <form onSubmit={(e) => { e.preventDefault(); api.get('/users/all-users').then(res => { const target = res.data.find(u => u.email === memberEmail); api.post(`/groups/${selectedGroup.group._id}/add-member`, { userId: target._id }).then(() => { setIsAddMemberOpen(false); handleViewGroup(selectedGroup.group._id); }); }); }} className="space-y-4">
-            <input type="email" placeholder="Email Address" onChange={(e) => setMemberEmail(e.target.value)} className="w-full p-5 bg-gray-50 rounded-2xl outline-none font-bold" required />
-            <button type="submit" className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-lg shadow-lg">Invite & Sync</button>
-          </form>
+         <form
+  onSubmit={(e) => {
+    e.preventDefault();
+
+    // ✅ 1. If friend selected → use directly
+    if (selectedFriendId) {
+      api.post(`/groups/${selectedGroup.group._id}/add-member`, {
+        userId: selectedFriendId,
+      }).then(() => {
+        setIsAddMemberOpen(false);
+        setSelectedFriendId("");
+        handleViewGroup(selectedGroup.group._id);
+      });
+      return;
+    }
+
+    // ✅ 2. Else fallback to email
+    api.get('/users/all-users').then(res => {
+      const target = res.data.find(u => u.email === memberEmail);
+
+      if (!target) {
+        alert("User not found");
+        return;
+      }
+
+      api.post(`/groups/${selectedGroup.group._id}/add-member`, {
+        userId: target._id
+      }).then(() => {
+        setIsAddMemberOpen(false);
+        setMemberEmail("");
+        handleViewGroup(selectedGroup.group._id);
+      });
+    });
+  }}
+  className="space-y-4"
+>
+  {/* 🔽 FRIEND DROPDOWN */}
+ <select
+  value={selectedFriendId}
+  onChange={(e) => setSelectedFriendId(e.target.value)}
+  className="w-full p-4 bg-gray-50 rounded-2xl font-bold outline-none"
+>
+  <option value="">Select Friend</option>
+
+  {friends.map((f) => {
+    const isAlreadyMember = selectedGroup.group.members.some(
+      (m) => m._id.toString() === f.user._id.toString()
+    );
+
+    return (
+      <option
+        key={f.user._id}
+        value={f.user._id}
+        disabled={isAlreadyMember}
+      >
+        {f.user.name} {isAlreadyMember ? "(Already in group)" : ""}
+      </option>
+    );
+  })}
+</select>
+
+  {/* OR */}
+  <div className="text-center text-xs font-bold text-gray-400">OR</div>
+
+  {/* 📧 EMAIL INPUT */}
+  <input
+    type="email"
+    placeholder="Email Address"
+    value={memberEmail}
+    onChange={(e) => setMemberEmail(e.target.value)}
+    disabled={selectedFriendId} // optional UX improvement
+    className="w-full p-5 bg-gray-50 rounded-2xl outline-none font-bold"
+  />
+
+  <button
+    type="submit"
+    className="w-full bg-emerald-600 text-white py-5 rounded-2xl font-black text-lg shadow-lg"
+  >
+    Invite & Sync
+  </button>
+</form>
         </Modal>
       )}
     </div>
