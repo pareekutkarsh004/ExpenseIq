@@ -1,4 +1,5 @@
 import User from "../models/User.model.js";
+import Expense from "../models/Expense.js";
 
 export const registerOrLoginUser = async (req, res) => {
   try {
@@ -97,6 +98,88 @@ export const getAllUsers = async (req, res) => {
 
     res.status(200).json(users);
   } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const getFriendLedger = async (req, res) => {
+  try {
+    const { firebaseUID } = req.user;
+    const { friendId } = req.params;
+
+    const currentUser = await User.findOne({ firebaseUID });
+    if (!currentUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const friend = await User.findById(friendId).select("name email");
+    if (!friend) {
+      return res.status(404).json({ message: "Friend not found" });
+    }
+
+    const expenses = await Expense.find({
+      participants: { $all: [currentUser._id, friendId] }
+    })
+      .sort({ createdAt: -1 })
+      .populate("paidBy", "name email")
+      .populate("group", "name")
+      .populate("participants", "name email")
+      .populate("splits.user", "name email");
+
+    const currentUserId = currentUser._id.toString();
+    const friendUserId = friend._id.toString();
+
+    let netBalance = 0;
+
+    const ledgerExpenses = expenses.map((expense) => {
+      const yourSplit = expense.splits.find(
+        (split) => split.user?._id?.toString() === currentUserId || split.user?.toString() === currentUserId
+      );
+      const friendSplit = expense.splits.find(
+        (split) => split.user?._id?.toString() === friendUserId || split.user?.toString() === friendUserId
+      );
+
+      const yourShare = Number((yourSplit?.amount || 0).toFixed(2));
+      const friendShare = Number((friendSplit?.amount || 0).toFixed(2));
+
+      let pairImpact = 0;
+
+      if (expense.paidBy?._id?.toString() === currentUserId) {
+        pairImpact = friendShare;
+        netBalance += friendShare;
+      } else if (expense.paidBy?._id?.toString() === friendUserId) {
+        pairImpact = -yourShare;
+        netBalance -= yourShare;
+      }
+
+      return {
+        _id: expense._id,
+        description: expense.description,
+        amount: expense.amount,
+        createdAt: expense.createdAt,
+        group: expense.group,
+        paidBy: expense.paidBy,
+        participants: expense.participants,
+        yourShare,
+        friendShare,
+        pairImpact: Number(pairImpact.toFixed(2))
+      };
+    });
+
+    const roundedNetBalance = Number(netBalance.toFixed(2));
+
+    return res.status(200).json({
+      friend,
+      netBalance: roundedNetBalance,
+      summary: {
+        youOwe: roundedNetBalance < 0 ? Math.abs(roundedNetBalance) : 0,
+        youAreOwed: roundedNetBalance > 0 ? roundedNetBalance : 0,
+        status: roundedNetBalance > 0 ? "owes_you" : roundedNetBalance < 0 ? "you_owe" : "settled"
+      },
+      expenses: ledgerExpenses
+    });
+  } catch (error) {
+    console.error("🔥 Error in getFriendLedger:", error);
     res.status(500).json({ message: error.message });
   }
 };
