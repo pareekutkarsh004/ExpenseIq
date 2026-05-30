@@ -187,7 +187,7 @@ export const getGroupBalances = async (req, res) => {
 export const addMemberToGroup = async (req, res) => {
   try {
     const { groupId } = req.params;
-    const { userId } = req.body;
+    const { userId, userIds } = req.body;
 
     const group = await Group.findById(groupId);
     if (!group) return res.status(404).json({ message: "Group not found" });
@@ -196,27 +196,42 @@ export const addMemberToGroup = async (req, res) => {
     if (!currentUser) return res.status(404).json({ message: "User not found" });
 
     if (!group.members.includes(currentUser._id)) return res.status(403).json({ message: "Access denied" });
-    if (group.members.includes(userId)) return res.status(400).json({ message: "User already in group" });
 
-    group.members.push(userId);
+    let idsToAdd = [];
+    if (userId) idsToAdd.push(userId);
+    if (userIds && Array.isArray(userIds)) idsToAdd.push(...userIds);
+
+    // Filter out IDs that are already in the group and keep unique entries
+    const uniqueIdsToAdd = [...new Set(idsToAdd)].filter(
+      (id) => !group.members.map((m) => m.toString()).includes(id.toString())
+    );
+
+    if (uniqueIdsToAdd.length === 0) {
+      return res.status(400).json({ message: "All specified users are already in the group" });
+    }
+
+    group.members.push(...uniqueIdsToAdd);
     await group.save();
 
-    // ✅ FIXED UNIQUE FRIENDSHIP: Sync friends for all members but exclude self
-    // 1. Add the new user to everyone else's unique friends list
-    await User.updateMany(
-      { _id: { $in: group.members, $ne: userId } },
-      { $addToSet: { friends: { user: userId } } }
-    );
-    
-    // 2. Add everyone else to the new user's unique friends list
-    const otherMembers = group.members.filter(id => id.toString() !== userId.toString());
-    await User.findByIdAndUpdate(userId, {
-      $addToSet: { friends: { $each: otherMembers.map(id => ({ user: id })) } }
-    });
+    // Sync friends for all members
+    for (const newUserId of uniqueIdsToAdd) {
+      // 1. Add the new user to everyone else's unique friends list
+      await User.updateMany(
+        { _id: { $in: group.members, $ne: newUserId } },
+        { $addToSet: { friends: { user: newUserId } } }
+      );
+      
+      // 2. Add everyone else to the new user's unique friends list
+      const otherMembers = group.members.filter(id => id.toString() !== newUserId.toString());
+      await User.findByIdAndUpdate(newUserId, {
+        $addToSet: { friends: { $each: otherMembers.map(id => ({ user: id })) } }
+      });
+    }
 
     await group.populate("members", "name email");
-    return res.status(200).json({ message: "Member added and unique friends synced", group });
+    return res.status(200).json({ message: "Members added and unique friends synced", group });
   } catch (error) {
+    console.error("Error adding members to group:", error);
     return res.status(500).json({ message: "Internal Server Error" });
   }
 };

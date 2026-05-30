@@ -62,11 +62,16 @@ export const updateUser = async (req, res) => {
   try {
     const { firebaseUID } = req.user;
 
-    const { name } = req.body;
+    const { name, phoneNumber, avatar } = req.body;
+
+    const updateFields = {};
+    if (name !== undefined) updateFields.name = name;
+    if (phoneNumber !== undefined) updateFields.phoneNumber = phoneNumber;
+    if (avatar !== undefined) updateFields.avatar = avatar;
 
 const updatedUser = await User.findOneAndUpdate(
   { firebaseUID },
-  { name },
+  updateFields,
   { returnDocument: "after" }
 );
 

@@ -1,6 +1,6 @@
 // src/pages/Home.jsx
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/useAuth";
 import { CheckCircle, Zap, Shield, ArrowRight } from "lucide-react";
 
 const Home = () => {
@@ -25,24 +25,24 @@ const Home = () => {
       </nav>
 
       {/* Hero Section */}
-      <header className="max-w-5xl mx-auto text-center pt-20 pb-16 px-4">
-        <h2 className="text-6xl font-black text-gray-900 leading-tight mb-6">
+      <header className="max-w-5xl mx-auto text-center pt-12 sm:pt-20 pb-10 sm:pb-16 px-4">
+        <h2 className="text-3xl sm:text-5xl md:text-6xl font-black text-gray-900 leading-tight mb-4 sm:mb-6">
           Smart splitting for <span className="text-emerald-600">smart people.</span>
         </h2>
-        <p className="text-xl text-gray-500 mb-10 max-w-2xl mx-auto leading-relaxed">
+        <p className="text-sm sm:text-lg md:text-xl text-gray-500 mb-8 sm:mb-10 max-w-2xl mx-auto leading-relaxed">
           The easiest way to share expenses with friends and family. Track bills, settle debts, and manage group finances in ₹ Rupees.
         </p>
         <button 
           onClick={() => navigate("/login")}
-          className="flex items-center gap-2 mx-auto bg-gray-900 text-white px-8 py-4 rounded-2xl font-bold text-lg hover:bg-gray-800 transition-all active:scale-95"
+          className="flex items-center gap-2 mx-auto bg-gray-900 text-white px-6 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl font-bold text-base sm:text-lg hover:bg-gray-800 transition-all active:scale-95 shadow-lg shadow-gray-200"
         >
           Get Started for Free <ArrowRight size={20} />
         </button>
       </header>
 
       {/* Features */}
-      <section className="bg-gray-50 py-20">
-        <div className="max-w-7xl mx-auto px-6 grid grid-cols-1 md:grid-cols-3 gap-12">
+      <section className="bg-gray-50 py-12 sm:py-16 md:py-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 md:gap-12">
           <FeatureCard 
             icon={<Zap className="text-emerald-500" />} 
             title="Instant Sync" 

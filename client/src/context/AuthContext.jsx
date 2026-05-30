@@ -1,5 +1,5 @@
-// src/context/AuthContext.jsx
-import { createContext, useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { AuthContext } from "./useAuth";
 import { 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
@@ -8,8 +8,6 @@ import {
 } from "firebase/auth";
 import { auth } from "../firebase";
 import api from "../services/api";
-
-const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -57,11 +55,13 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => signOut(auth);
 
+  const updateCurrentUser = (updatedUser) => {
+    setUser(updatedUser);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, login, signup, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, signup, logout, loading, updateCurrentUser }}>
       {!loading && children}
     </AuthContext.Provider>
   );
 };
-
-export const useAuth = () => useContext(AuthContext);

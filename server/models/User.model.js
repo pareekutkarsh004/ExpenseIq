@@ -8,6 +8,8 @@ const userSchema = new mongoose.Schema({
   },
   name: String,
   email: String,
+  phoneNumber: String,
+  avatar: String,
 
   // ✅ ADD THIS
   friends: [
