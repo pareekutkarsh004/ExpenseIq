@@ -3,7 +3,7 @@ import axios from 'axios';
 import { auth } from '../firebase';
 
 const api = axios.create({
-  baseURL: 'http://localhost:5000/api', // Match your server port
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
 // Automatically add Firebase Token to every request
