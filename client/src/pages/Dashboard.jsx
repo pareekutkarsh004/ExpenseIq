@@ -40,6 +40,7 @@ const Dashboard = () => {
   const [profileAvatar, setProfileAvatar] = useState("");
   const [uploading, setUploading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [showAllMembers, setShowAllMembers] = useState(false);
 
   // New Toggle States for Expense History
   const [showAllGlobalExpenses, setShowAllGlobalExpenses] = useState(false);
@@ -106,6 +107,7 @@ const Dashboard = () => {
       setSimplifiedDebts(simplifyRes.data.transactions || []);
       setSelectedParticipants([user._id]);
       setShowAllGroupExpenses(false); // Reset toggle when switching groups
+      setShowAllMembers(false); // Reset member toggle when switching groups
     } catch (err) {
       console.error("Error loading group details", err);
     }
@@ -922,14 +924,36 @@ const Dashboard = () => {
                  </div>
               </div>
             </div>
-            <div className="bg-white rounded-2xl sm:rounded-[32px] p-6 sm:p-8 border border-gray-100 shadow-sm h-fit text-center">
-                <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-6">Members</h4>
-                <div className="flex flex-wrap justify-center gap-3">
-                    {selectedGroup.group.members.map(m => (
-                      <div key={m._id} title={m.name}>
-                        {renderAvatar(m, "w-10 h-10 text-xs shadow-sm")}
-                      </div>
-                    ))}
+            <div className="bg-white rounded-2xl sm:rounded-[32px] p-6 sm:p-8 border border-gray-100 shadow-sm h-fit text-left">
+                <div className="flex justify-between items-center mb-6">
+                  <h4 className="text-xs font-black text-gray-400 uppercase tracking-widest">Members ({selectedGroup.group.members.length})</h4>
+                  {selectedGroup.group.members.length > 5 && (
+                    <button 
+                      onClick={() => setShowAllMembers(!showAllMembers)}
+                      className="text-emerald-600 font-black text-xs uppercase tracking-widest hover:underline"
+                    >
+                      {showAllMembers ? "Show Less" : "See All"}
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-3">
+                    {([...selectedGroup.group.members]
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .slice(0, showAllMembers ? undefined : 5)
+                    ).map(m => {
+                      const isCreator = (selectedGroup.group.createdBy?._id || selectedGroup.group.createdBy) === m._id;
+                      return (
+                        <div key={m._id} className="flex items-center gap-3 bg-gray-50/50 p-2.5 rounded-2xl border border-transparent hover:border-emerald-100 transition-all">
+                          {renderAvatar(m, "w-9 h-9 text-xs shadow-sm flex-shrink-0")}
+                          <div className="min-w-0 flex-1">
+                            <p className="font-extrabold text-sm text-gray-800 truncate" title={m.name}>{m.name}</p>
+                            <p className="text-[9px] font-black text-gray-400 uppercase tracking-wider truncate">
+                              {isCreator ? "Group Creator" : "Member"}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
                 </div>
             </div>
           </div>
