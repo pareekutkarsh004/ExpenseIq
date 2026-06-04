@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from "react";
 import { useAuth } from "../context/useAuth";
 import { useNavigate } from "react-router-dom";
 import api from "../services/api";
-import axios from "axios";
 import { 
   LayoutDashboard, Users, Receipt, Plus, LogOut, 
   ArrowUpRight, ArrowDownLeft, X, CreditCard, ChevronDown, 
@@ -262,31 +261,15 @@ const Dashboard = () => {
 
     setUploading(true);
     try {
-      const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || 'dydhsbpwt';
-      const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || 'expenseiq_preset';
-
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('upload_preset', uploadPreset);
-
-      const res = await axios.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, formData);
-      const imageUrl = res.data.secure_url;
-
-      setProfileAvatar(imageUrl);
-      alert("Image uploaded successfully! Click 'Save Changes' to save your profile.");
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setProfileAvatar(reader.result);
+        alert("Image loaded successfully! Click 'Save Changes' to save your profile.");
+      };
+      reader.readAsDataURL(file);
     } catch (err) {
-      console.error("Cloudinary upload failed, falling back to local base64:", err);
-      try {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          setProfileAvatar(reader.result);
-          alert("Image loaded locally! Click 'Save Changes' to save your profile.");
-        };
-        reader.readAsDataURL(file);
-      } catch (fallbackErr) {
-        console.error("Local file reader failed:", fallbackErr);
-        alert("Failed to load image");
-      }
+      console.error("Local file reader failed:", err);
+      alert("Failed to load image");
     } finally {
       setUploading(false);
     }
